@@ -1,0 +1,167 @@
+#!/bin/python
+try:
+    import rich, os, argparse
+    from pathlib import Path
+    from dotenv import load_dotenv
+except ImportError as e:
+    print(f"Import error: {e}")
+
+class IndexOutOfBounds(Exception):
+    pass
+
+class Note:
+    def __init__(self):
+        self.file_name = Path(os.getenv("FILE_NAME"))
+    
+    def check_note(self):
+        try:
+            if not self.file_name.exists():
+                self.create_a_file()
+                return False
+            if not self.file_name.is_file():
+                return False
+            return True
+        except Exception as e:
+            rich.print(f"[bold red] (!) Yeah boss there is an error in check_note: {e} [Bold red]")
+            return False
+    
+    def create_a_file(self):
+        try:
+            self.file_name.touch()
+            rich.print(f"[bold green] (+) Create a file first dude, here already done just for you [bold green]")
+            return True
+        except Exception as e:
+            rich.print(f"[bold red] (!) Wow error here in create_a_file: {e}")
+            return False
+
+    def write_file(self, text):
+        try:
+            with open(self.file_name, '+a') as f:
+                f.write(f"{text}\n")
+            return True
+        except Exception as e:
+            rich.print(f"[bold red] (!) Sire there is an enemy attack in error from write_file: {e}")
+            return False
+        
+    def read_file(self, with_index):
+        try:
+            with open(self.file_name, "r") as f:
+                content = f.readlines()
+            if with_index:
+                index = 1
+                for i in content:
+                    print(f'{index}. {i.strip("\n")}')
+                    index+=1
+                return True
+            for i in content:
+                print(i.strip('\n'))
+            return True
+        except Exception as e:
+            rich.print(f"[bold red] (!) General, error is attacking us from read_file: {e}")
+            return False
+        
+    def delete_entry(self, index):
+        try:
+            if index < 1:
+                raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
+            with open(self.file_name, "r") as f:
+                content = f.readlines()
+                content.pop(index-1)
+            with open(self.file_name, 'w') as f:
+                f.writelines(content)
+            return True
+        except Exception as e:
+            rich.print(f'[bold red] (!) There is an error in delete_entry bro: {e}')
+            return False
+
+    def append_entry(self, text, index):
+        try:
+            if index < 1:
+                raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
+            with open(self.file_name, 'r') as f:
+                content = f.readlines()
+                content.pop(index-1)
+                content.insert(index-1, text)
+            with open(self.file_name, 'w') as f:
+                f.writelines(content)
+                return True
+        except Exception as e:
+            rich.print(f'[bold red] (!) Hey, there is another error in append_entry: {e}')
+            return False
+
+    def search_entry(self, text):
+        try:
+            with open(self.file_name, "r") as f:
+                f.read()
+        except Exception as e:
+            rich.print(f'[bold red] (!) Parlay has been given by error in search_entry: {e}')
+
+
+    def find_index(self, index):
+        with open(self.file_name, "r") as f:
+            try:
+                content = f.readlines() 
+                return content[index -1]
+            except Exception as e:
+                rich.print(f'Hey bro there is some error in {e}')
+                return False
+
+    def prerequired(self):
+        try:
+            methods = [
+                ("if file exists", self.check_note)
+            ]
+            error_occured = False
+            for method_name, method in methods:
+                if method():
+                    continue
+                error_occured = True
+            if error_occured:
+                return False
+            return True
+        except Exception as e:
+            rich.print(f"[bold red] (!) Alert Alert Alert, there is an error in prerequired: {e}")
+            return False
+
+    def init(self):
+        try:
+            if not self.prerequired():
+                return False
+            parser = argparse.ArgumentParser(description="This is an note taking application.")
+            subparsers = parser.add_subparsers(dest="command")
+
+            list_parser = subparsers.add_parser("list", help="Lists all entries in the file")
+            list_parser.add_argument("-i", "--index", action="store_true", help="Lists all entries in the file with indexes")
+
+            add_parser = subparsers.add_parser("write", help="Writes down a entry")
+            add_parser.add_argument("content", help="Write down the stuff you wanna write")
+
+            delete_parser = subparsers.add_parser("delete", help="Deletes a entry in the list")
+            delete_parser.add_argument("content", help="Write the index of the list you want to delete")
+
+            append_parser = subparsers.add_parser("append", help="Changes the required entry")
+            append_parser.add_argument("content", help="Write the content that will be kept in the entry instead")
+            append_parser.add_argument("-i", "--index", help="Write the index that needs to be changed")
+            
+
+            args = parser.parse_args()
+            if args.command == "list":
+                rich.print(f'[bold yellow] (*) Listing all the entries .... (*) [bold yellow]')
+                self.read_file(args.index)
+            elif args.command == "write":
+                rich.print(f'[bold blue] (*) Writing the content: {args.content} (*) [bold blue]')
+                self.write_file(args.content)
+            elif args.command == "delete":
+                rich.print(f"[bold red] (*) Deleting the content: {args.content} (*) [bold red]")
+                self.delete_entry(int(args.content))
+            elif args.command == "append":
+                rich.print(f"[bold green] (*) Appending the content: {args.content} in index {args.index} (*) [bold green]")
+                self.append_entry(args.content, int(args.index))
+        except Exception as e:
+            rich.print(f'[bold red] There is a huge problem, error in init: {e} [bold red]')
+        
+
+if __name__ == "__main__":
+    note = Note()
+    load_dotenv()
+    note.init()

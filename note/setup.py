@@ -56,8 +56,7 @@ class SetUp:
         try:
             with open(self.file_loc, "w") as file:
                 res = file.write("")
-            if not res:
-                print("Something went wrong while creating the file")
+            if not self.file_loc.exists():
                 return False
             return True
         except Exception as e:

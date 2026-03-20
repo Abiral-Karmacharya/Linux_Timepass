@@ -162,6 +162,6 @@ class Note:
         
 
 if __name__ == "__main__":
-    note = Note()
     load_dotenv()
+    note = Note()
     note.init()

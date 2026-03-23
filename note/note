@@ -1,8 +1,7 @@
 #!/bin/python
 try:
-    import rich, os, argparse
+    import rich, os, argparse, sys
     from pathlib import Path
-    from dotenv import load_dotenv
 except ImportError as e:
     print(f"Import error: {e}")
 
@@ -10,15 +9,21 @@ class IndexOutOfBounds(Exception):
     pass
 
 class Note:
-    def __init__(self):
-        self.file_name = Path(os.getenv("FILE_NAME"))
-    
+    def __init__(self, file_name):
+        try:
+            self.file_name = Path(file_name)
+            self.base_dir = Path("~/.config/note").expanduser()
+            self.full_path = self.base_dir / self.file_name
+        except Exception as e:
+            print(e)
+            return False
+        
     def check_note(self):
         try:
-            if not self.file_name.exists():
+            if not self.full_path.exists():
                 self.create_a_file()
                 return False
-            if not self.file_name.is_file():
+            if not self.full_path.is_file():
                 return False
             return True
         except Exception as e:
@@ -27,7 +32,8 @@ class Note:
     
     def create_a_file(self):
         try:
-            self.file_name.touch()
+            self.full_path.parent.mkdir(parents=True, exist_ok=True)
+            self.full_path.touch()
             rich.print(f"[bold green] (+) Create a file first dude, here already done just for you [bold green]")
             return True
         except Exception as e:
@@ -36,7 +42,7 @@ class Note:
 
     def write_file(self, text):
         try:
-            with open(self.file_name, '+a') as f:
+            with open(self.full_path, '+a') as f:
                 f.write(f"{text}\n")
             return True
         except Exception as e:
@@ -45,7 +51,7 @@ class Note:
         
     def read_file(self, with_index):
         try:
-            with open(self.file_name, "r") as f:
+            with open(self.full_path, "r") as f:
                 content = f.readlines()
             if with_index:
                 index = 1
@@ -64,10 +70,10 @@ class Note:
         try:
             if index < 1:
                 raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
-            with open(self.file_name, "r") as f:
+            with open(self.full_path, "r") as f:
                 content = f.readlines()
                 content.pop(index-1)
-            with open(self.file_name, 'w') as f:
+            with open(self.full_path, 'w') as f:
                 f.writelines(content)
             return True
         except Exception as e:
@@ -78,11 +84,11 @@ class Note:
         try:
             if index < 1:
                 raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
-            with open(self.file_name, 'r') as f:
+            with open(self.full_path, 'r') as f:
                 content = f.readlines()
                 content.pop(index-1)
                 content.insert(index-1, text)
-            with open(self.file_name, 'w') as f:
+            with open(self.full_path, 'w') as f:
                 f.writelines(content)
                 return True
         except Exception as e:
@@ -91,14 +97,14 @@ class Note:
 
     def search_entry(self, text):
         try:
-            with open(self.file_name, "r") as f:
+            with open(self.full_path, "r") as f:
                 f.read()
         except Exception as e:
             rich.print(f'[bold red] (!) Parlay has been given by error in search_entry: {e}')
 
 
     def find_index(self, index):
-        with open(self.file_name, "r") as f:
+        with open(self.full_path, "r") as f:
             try:
                 content = f.readlines() 
                 return content[index -1]
@@ -122,46 +128,44 @@ class Note:
         except Exception as e:
             rich.print(f"[bold red] (!) Alert Alert Alert, there is an error in prerequired: {e}")
             return False
-
-    def init(self):
-        try:
-            if not self.prerequired():
-                return False
-            parser = argparse.ArgumentParser(description="This is an note taking application.")
-            subparsers = parser.add_subparsers(dest="command")
-
-            list_parser = subparsers.add_parser("list", help="Lists all entries in the file")
-            list_parser.add_argument("-i", "--index", action="store_true", help="Lists all entries in the file with indexes")
-
-            add_parser = subparsers.add_parser("write", help="Writes down a entry")
-            add_parser.add_argument("content", help="Write down the stuff you wanna write")
-
-            delete_parser = subparsers.add_parser("delete", help="Deletes a entry in the list")
-            delete_parser.add_argument("content", help="Write the index of the list you want to delete")
-
-            append_parser = subparsers.add_parser("append", help="Changes the required entry")
-            append_parser.add_argument("content", help="Write the content that will be kept in the entry instead")
-            append_parser.add_argument("-i", "--index", help="Write the index that needs to be changed")
-            
-
-            args = parser.parse_args()
-            if args.command == "list":
-                rich.print(f'[bold yellow] (*) Listing all the entries .... (*) [bold yellow]')
-                self.read_file(args.index)
-            elif args.command == "write":
-                rich.print(f'[bold blue] (*) Writing the content: {args.content} (*) [bold blue]')
-                self.write_file(args.content)
-            elif args.command == "delete":
-                rich.print(f"[bold red] (*) Deleting the content: {args.content} (*) [bold red]")
-                self.delete_entry(int(args.content))
-            elif args.command == "append":
-                rich.print(f"[bold green] (*) Appending the content: {args.content} in index {args.index} (*) [bold green]")
-                self.append_entry(args.content, int(args.index))
-        except Exception as e:
-            rich.print(f'[bold red] There is a huge problem, error in init: {e} [bold red]')
         
 
 if __name__ == "__main__":
-    load_dotenv()
-    note = Note()
-    note.init()
+    try:
+       
+        parser = argparse.ArgumentParser(description="This is an note taking application.")
+        parser.add_argument("-f", "--file", default="note.txt", help="Enter name of note here.")
+        subparsers = parser.add_subparsers(dest="command")
+
+        list_parser = subparsers.add_parser("list", help="Lists all entries in the file")
+        list_parser.add_argument("-i", "--index", action="store_true", help="Lists all entries in the file with indexes")
+
+        add_parser = subparsers.add_parser("write", help="Writes down a entry")
+        add_parser.add_argument("content", help="Write down the stuff you wanna write")
+
+        delete_parser = subparsers.add_parser("delete", help="Deletes a entry in the list")
+        delete_parser.add_argument("content", help="Write the index of the list you want to delete")
+
+        append_parser = subparsers.add_parser("append", help="Changes the required entry")
+        append_parser.add_argument("content", help="Write the content that will be kept in the entry instead")
+        append_parser.add_argument("-i", "--index", help="Write the index that needs to be changed")
+
+        args = parser.parse_args()
+        note = Note(args.file)
+
+        if not note.prerequired():
+            sys.exit(0)
+        if args.command == "list":
+            rich.print(f'[bold yellow] (*) Listing all the entries .... (*) [bold yellow]')
+            note.read_file(args.index)
+        elif args.command == "write":
+            rich.print(f'[bold blue] (*) Writing the content: {args.content} (*) [bold blue]')
+            note.write_file(args.content)
+        elif args.command == "delete":
+            rich.print(f"[bold red] (*) Deleting the content: {args.content} (*) [bold red]")
+            note.delete_entry(int(args.content))
+        elif args.command == "append":
+            rich.print(f"[bold green] (*) Appending the content: {args.content} in index {args.index} (*) [bold green]")
+            note.append_entry(args.content, int(args.index))
+    except Exception as e:
+        rich.print(f'[bold red] There is a huge problem, error in init: {e} [bold red]')

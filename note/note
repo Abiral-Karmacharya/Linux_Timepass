@@ -1,6 +1,6 @@
 #!/bin/python
 try:
-    import rich, os, argparse, sys
+    import rich, os, tempfile, argparse, sys
     from pathlib import Path
 except ImportError as e:
     print(f"Import error: {e}")
@@ -11,9 +11,14 @@ class IndexOutOfBounds(Exception):
 class Note:
     def __init__(self, file_name):
         try:
-            self.file_name = Path(file_name)
-            self.base_dir = Path("~/.config/note").expanduser()
-            self.full_path = self.base_dir / self.file_name
+            self.base_dir = Path("~/.config/note").expanduser().resolve()
+            requested_path = (self.base_dir / file_name).resolve()
+            if not str(requested_path).startswith(str(self.base_dir)):
+                rich.print("[bold red] (!) Path traversal has been detected. Common don't try to hack someone")
+                sys.exit(0)
+            self.full_path = requested_path
+            self.MAX_LINE = 1000
+            self.MAX_INPUT = 10 * 1024 * 1024
         except Exception as e:
             print(e)
             return False
@@ -21,27 +26,41 @@ class Note:
     def check_note(self):
         try:
             if not self.full_path.exists():
+                rich.print("[bold red] (!) File doesn't exists so create one?")
                 self.create_a_file()
                 return False
             if not self.full_path.is_file():
+                rich.print("[bold red] (!) File is not a file. Keep up the good work")
+                return False
+            if self.full_path.is_symlink():
+                rich.print("[bold red] (!) Security Alert: Symbolic link detected. Aborting.")
                 return False
             return True
         except Exception as e:
-            rich.print(f"[bold red] (!) Yeah boss there is an error in check_note: {e} [Bold red]")
+            rich.print(f"[bold red] (!) Yeah boss there is an error in check_note: {e} [bold red]")
             return False
     
     def create_a_file(self):
         try:
+            if not self.check_note():
+                return False
             self.full_path.parent.mkdir(parents=True, exist_ok=True)
             self.full_path.touch()
             rich.print(f"[bold green] (+) Create a file first dude, here already done just for you [bold green]")
             return True
         except Exception as e:
-            rich.print(f"[bold red] (!) Wow error here in create_a_file: {e}")
+            rich.print(f"[bold red] (!) Wow error here in create_a_file: {e} [bold red]")
             return False
 
     def write_file(self, text):
         try:
+            if not self.check_note():
+                return False
+            if len(text) > self.MAX_LINE:
+                rich.print("[bold red] (!) Too high of an input, Potential buffer/DDoS attack")
+                return False
+            if self.full_path.stat().st_size > self.MAX_INPUT:
+                print("[bold red] (!) File size limit reached.")
             with open(self.full_path, '+a') as f:
                 f.write(f"{text}\n")
             return True
@@ -51,16 +70,14 @@ class Note:
         
     def read_file(self, with_index):
         try:
+            if not self.check_note():
+                return False
             with open(self.full_path, "r") as f:
-                content = f.readlines()
-            if with_index:
-                index = 1
-                for i in content:
-                    print(f'{index}. {i.strip("\n")}')
-                    index+=1
-                return True
-            for i in content:
-                print(i.strip('\n'))
+                for index, line in enumerate(f, 1):
+                    if with_index:
+                        print(f'{index}. {line.strip('\n')}')
+                    else:
+                        print(line.strip('\n'))
             return True
         except Exception as e:
             rich.print(f"[bold red] (!) General, error is attacking us from read_file: {e}")
@@ -68,32 +85,82 @@ class Note:
         
     def delete_entry(self, index):
         try:
+            if not self.check_note():
+                return False
             if index < 1:
                 raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
-            with open(self.full_path, "r") as f:
-                content = f.readlines()
-                content.pop(index-1)
-            with open(self.full_path, 'w') as f:
-                f.writelines(content)
+            fd, temp_path = tempfile.mkstemp(dir=self.base_dir, text=True) 
+            with os.fdopen(fd, 'w') as tmp_file:
+                with open(self.full_path, "r") as f:
+                    for i, line in enumerate(f, 1):
+                        if i == index:
+                            continue
+                        tmp_file.write(line)
+            os.replace(temp_path, self.full_path)
             return True
         except Exception as e:
             rich.print(f'[bold red] (!) There is an error in delete_entry bro: {e}')
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                os.remove(temp_path)
             return False
-
+        
     def append_entry(self, text, index):
         try:
+            if not self.check_note():
+                return False
             if index < 1:
                 raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
-            with open(self.full_path, 'r') as f:
-                content = f.readlines()
-                content.pop(index-1)
-                content.insert(index-1, text)
-            with open(self.full_path, 'w') as f:
-                f.writelines(content)
-                return True
+            fd, temp_path = tempfile.mkstemp(dir=self.base_dir, text=True)  
+            formatted_text = f"{text}\n"
+            with os.fdopen(fd, 'w') as tmp_file:
+                with open(self.full_path, 'r') as f:
+                    for i, line in enumerate(f, 1):
+                        if i == index:
+                            tmp_file.write(formatted_text)
+                            continue
+                        tmp_file.write(line)
+            os.replace(temp_path, self.full_path)
+            return True
         except Exception as e:
             rich.print(f'[bold red] (!) Hey, there is another error in append_entry: {e}')
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                os.remove(temp_path)
             return False
+        
+
+    def insert_entry(self, text, index):
+        try:
+            if not self.check_note():
+                return False
+            if index < 1:
+                raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
+            fd, temp_path = tempfile.mkstemp(dir=self.base_dir, text=True)  
+            formatted_text = f"{text}\n"
+            with os.fdopen(fd, 'w') as tmp_file:
+                with open(self.full_path, 'r') as f:
+                    found = False
+                    for i, line in enumerate(f, 1):
+                        if i == index:
+                            tmp_file.write(formatted_text)
+                            found = True
+                        tmp_file.write(line)
+                if not found and index > 1:
+                    tmp_file.write(formatted_text)
+            os.replace(temp_path, self.full_path)
+            return True
+        except Exception as e:
+            rich.print(f'[bold red] (!) Hey, there is another error in append_entry: {e}')
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                os.remove(temp_path)
+            return False
+        
+    def search_files(self):
+        try:
+            files = list(self.base_dir.glob("*"))
+            for file_name in files:
+                print(str(file_name).split('/')[-1])
+        except Exception as e:
+            rich.print(f'[bold red] (!) Sir there is an error in search_files: {e}')
 
     def search_entry(self, text):
         try:
@@ -104,6 +171,8 @@ class Note:
 
 
     def find_index(self, index):
+        if not self.check_note():
+                return False
         with open(self.full_path, "r") as f:
             try:
                 content = f.readlines() 
@@ -111,23 +180,15 @@ class Note:
             except Exception as e:
                 rich.print(f'Hey bro there is some error in {e}')
                 return False
-
-    def prerequired(self):
+            
+    def erase_file(self): 
         try:
-            methods = [
-                ("if file exists", self.check_note)
-            ]
-            error_occured = False
-            for method_name, method in methods:
-                if method():
-                    continue
-                error_occured = True
-            if error_occured:
+            if not self.full_path.exists():
+                rich.print("[bold red] (!) If you want to delete a file then create one first ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧")
                 return False
-            return True
+            self.full_path.unlink()
         except Exception as e:
-            rich.print(f"[bold red] (!) Alert Alert Alert, there is an error in prerequired: {e}")
-            return False
+            rich.print(f'Dude, the error is attacking from erase_file: {e}')
         
 
 if __name__ == "__main__":
@@ -150,11 +211,17 @@ if __name__ == "__main__":
         append_parser.add_argument("content", help="Write the content that will be kept in the entry instead")
         append_parser.add_argument("-i", "--index", help="Write the index that needs to be changed")
 
+        insert_parser = subparsers.add_parser("insert", help="Inserts entry in the note which out removing anything else")
+        insert_parser = subparsers.add_parser("content", help="Write entry to be added to the note")
+        insert_parser.add_argument("-i", "--index", help="Write index that needs to be added to")
+
+        list_parser = subparsers.add_parser("ls", help="lists all the files that has been created")
+
+        erase_parser = subparsers.add_parser("destroy", help="Removes the file completely")
+
         args = parser.parse_args()
         note = Note(args.file)
 
-        if not note.prerequired():
-            sys.exit(0)
         if args.command == "list":
             rich.print(f'[bold yellow] (*) Listing all the entries .... (*) [bold yellow]')
             note.read_file(args.index)
@@ -167,5 +234,15 @@ if __name__ == "__main__":
         elif args.command == "append":
             rich.print(f"[bold green] (*) Appending the content: {args.content} in index {args.index} (*) [bold green]")
             note.append_entry(args.content, int(args.index))
+        elif args.command == "ls":
+            rich.print(f"[bold yellow] (*) Listing all the files (*) [bold yellow]")
+            note.search_files()
+        elif args.command == "destroy":
+            rich.print(f"[bold red] (!) Are you sure you want to remove this file, [bold red]", end="")
+            choice = input("y or n: ")
+            if choice == "y":
+                note.erase_file()
+            else:
+                sys.exit(0)
     except Exception as e:
         rich.print(f'[bold red] There is a huge problem, error in init: {e} [bold red]')

@@ -8,42 +8,45 @@ except ImportError as e:
 class IndexOutOfBounds(Exception):
     pass
 
+class BasicFileCheck(Exception):
+    pass
+
 class Note:
     def __init__(self, file_name):
         try:
-            self.base_dir = Path("~/.config/note").expanduser().resolve()
-            requested_path = (self.base_dir / file_name).resolve()
-            if not str(requested_path).startswith(str(self.base_dir)):
-                rich.print("[bold red] (!) Path traversal has been detected. Common don't try to hack someone")
-                sys.exit(0)
-            self.full_path = requested_path
+            if file_name == None:
+                pass
+            else:
+                self.base_dir = Path("~/.config/note").expanduser().resolve()
+                requested_path = (self.base_dir / file_name).resolve()
+                if not str(requested_path).startswith(str(self.base_dir)):
+                    rich.print("[bold red] (!) Path traversal has been detected. Common don't try to hack someone ⎛⎝( ` ᢍ ´ )⎠⎞ᵐᵘʰᵃʰᵃ[bold red]")
+                    sys.exit(0)
+                self.full_path = requested_path
             self.MAX_LINE = 1000
             self.MAX_INPUT = 10 * 1024 * 1024
         except Exception as e:
-            print(e)
+            rich.print(f'[bold red] There is an error in __init__: {e} [bold red]')
             return False
         
     def check_note(self):
-        try:
-            if not self.full_path.exists():
-                rich.print("[bold red] (!) File doesn't exists so create one?")
-                self.create_a_file()
-                return False
-            if not self.full_path.is_file():
-                rich.print("[bold red] (!) File is not a file. Keep up the good work")
-                return False
-            if self.full_path.is_symlink():
-                rich.print("[bold red] (!) Security Alert: Symbolic link detected. Aborting.")
-                return False
-            return True
-        except Exception as e:
-            rich.print(f"[bold red] (!) Yeah boss there is an error in check_note: {e} [bold red]")
+        if not self.full_path.exists():
+            self.create_a_file()
+            raise BasicFileCheck("File doesn't exist so create one?")
+            # rich.print("[bold red] (!) File doesn't exists so create one? [bold red]")
+            # self.create_a_file()
+            # return False
+        if not self.full_path.is_file():
+            rich.print("[bold red] (!) File is not a file. Keep up the good work [bold red]")
             return False
+        if self.full_path.is_symlink():
+            rich.print("[bold red] (!) Security Alert: Symbolic link detected. Aborting.[bold red]")
+            return False
+        return True
+       
     
     def create_a_file(self):
         try:
-            if not self.check_note():
-                return False
             self.full_path.parent.mkdir(parents=True, exist_ok=True)
             self.full_path.touch()
             rich.print(f"[bold green] (+) Create a file first dude, here already done just for you [bold green]")
@@ -55,17 +58,17 @@ class Note:
     def write_file(self, text):
         try:
             if not self.check_note():
-                return False
+                return 
             if len(text) > self.MAX_LINE:
-                rich.print("[bold red] (!) Too high of an input, Potential buffer/DDoS attack")
+                rich.print("[bold red] (!) Too high of an input, Potential buffer/DDoS attack [bold red]")
                 return False
             if self.full_path.stat().st_size > self.MAX_INPUT:
-                print("[bold red] (!) File size limit reached.")
+                print("[bold red] (!) File size limit reached. [bold red]")
             with open(self.full_path, '+a') as f:
                 f.write(f"{text}\n")
             return True
         except Exception as e:
-            rich.print(f"[bold red] (!) Sire there is an enemy attack in error from write_file: {e}")
+            rich.print(f"[bold red] (!) Sire there is an enemy attack in error from write_file: {e} [bold red]")
             return False
         
     def read_file(self, with_index):
@@ -80,7 +83,7 @@ class Note:
                         print(line.strip('\n'))
             return True
         except Exception as e:
-            rich.print(f"[bold red] (!) General, error is attacking us from read_file: {e}")
+            rich.print(f"[bold red] (!) General, error is attacking us from read_file: {e} [bold red]")
             return False
         
     def delete_entry(self, index):
@@ -195,7 +198,7 @@ if __name__ == "__main__":
     try:
        
         parser = argparse.ArgumentParser(description="This is an note taking application.")
-        parser.add_argument("-f", "--file", default="note.txt", help="Enter name of note here.")
+        parser.add_argument("file", nargs="?", default="note.txt", help="Enter name of note here.")
         subparsers = parser.add_subparsers(dest="command")
 
         list_parser = subparsers.add_parser("list", help="Lists all entries in the file")
@@ -216,11 +219,10 @@ if __name__ == "__main__":
         insert_parser.add_argument("-i", "--index", help="Write index that needs to be added to")
 
         list_parser = subparsers.add_parser("ls", help="lists all the files that has been created")
-
         erase_parser = subparsers.add_parser("destroy", help="Removes the file completely")
 
-        args = parser.parse_args()
-        note = Note(args.file)
+        args = parser.parse_args()  
+        note = Note(args.file or None)
 
         if args.command == "list":
             rich.print(f'[bold yellow] (*) Listing all the entries .... (*) [bold yellow]')
@@ -246,3 +248,7 @@ if __name__ == "__main__":
                 sys.exit(0)
     except Exception as e:
         rich.print(f'[bold red] There is a huge problem, error in init: {e} [bold red]')
+        sys.exit(0)
+    except BasicFileCheck as e:
+        rich.print(f'[bold red] User error: {e} [bold red]')
+        sys.exit(0)

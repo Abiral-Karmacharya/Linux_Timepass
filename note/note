@@ -11,37 +11,38 @@ class IndexOutOfBounds(Exception):
 class BasicFileCheck(Exception):
     pass
 
+class SecurityAlert(Exception):
+    pass
+
 class Note:
     def __init__(self, file_name):
-        try:
-            if file_name == None:
-                pass
-            else:
-                self.base_dir = Path("~/.config/note").expanduser().resolve()
-                requested_path = (self.base_dir / file_name).resolve()
-                if not str(requested_path).startswith(str(self.base_dir)):
-                    rich.print("[bold red] (!) Path traversal has been detected. Common don't try to hack someone ⎛⎝( ` ᢍ ´ )⎠⎞ᵐᵘʰᵃʰᵃ[bold red]")
-                    sys.exit(0)
-                self.full_path = requested_path
-            self.MAX_LINE = 1000
-            self.MAX_INPUT = 10 * 1024 * 1024
-        except Exception as e:
-            rich.print(f'[bold red] There is an error in __init__: {e} [bold red]')
-            return False
+        if file_name == None:
+            pass
+        else:
+            self.base_dir = Path("~/.config/note").expanduser().resolve()
+            requested_path = (self.base_dir / file_name).resolve()
+            if not str(requested_path).startswith(str(self.base_dir)):
+                raise SecurityAlert("Path traversal has been detected. Common don't try to hack someone  ⎛⎝( ` ᢍ ´ )⎠⎞ᵐᵘʰᵃʰᵃ")
+            self.full_path = requested_path
+        self.MAX_LINE = 1000
+        self.MAX_INPUT = 10 * 1024 * 1024
+        
         
     def check_note(self):
         if not self.full_path.exists():
-            self.create_a_file()
-            raise BasicFileCheck("File doesn't exist so create one?")
-            # rich.print("[bold red] (!) File doesn't exists so create one? [bold red]")
-            # self.create_a_file()
-            # return False
+            try:
+                rich.print("[bold green] (+) File doesn't exists. Do you want to create a new one: [bold green]", end="")
+                choice = input("y or n: ")
+                if choice == "n":
+                    sys.exit(0)
+                self.create_a_file()
+                return True
+            except Exception as e:
+                raise BasicFileCheck(f"Failed to re create a file: {e}")
         if not self.full_path.is_file():
-            rich.print("[bold red] (!) File is not a file. Keep up the good work [bold red]")
-            return False
+            raise BasicFileCheck('File is not a file. Keep up the good work.')
         if self.full_path.is_symlink():
-            rich.print("[bold red] (!) Security Alert: Symbolic link detected. Aborting.[bold red]")
-            return False
+            raise SecurityAlert("Symbolic link has been detected. Aborting.")
         return True
        
     
@@ -49,47 +50,36 @@ class Note:
         try:
             self.full_path.parent.mkdir(parents=True, exist_ok=True)
             self.full_path.touch()
-            rich.print(f"[bold green] (+) Create a file first dude, here already done just for you [bold green]")
             return True
         except Exception as e:
             rich.print(f"[bold red] (!) Wow error here in create_a_file: {e} [bold red]")
             return False
 
     def write_file(self, text):
-        try:
-            if not self.check_note():
-                return 
-            if len(text) > self.MAX_LINE:
-                rich.print("[bold red] (!) Too high of an input, Potential buffer/DDoS attack [bold red]")
-                return False
-            if self.full_path.stat().st_size > self.MAX_INPUT:
-                print("[bold red] (!) File size limit reached. [bold red]")
-            with open(self.full_path, '+a') as f:
-                f.write(f"{text}\n")
-            return True
-        except Exception as e:
-            rich.print(f"[bold red] (!) Sire there is an enemy attack in error from write_file: {e} [bold red]")
-            return False
+        self.check_note()
+        if len(text) > self.MAX_LINE:
+            raise SecurityAlert("Too high of input, Potential buffer/DDoS attack")
+        if self.full_path.stat().st_size > self.MAX_INPUT:
+            raise BasicFileCheck("File size limit reached.")
+        with open(self.full_path, 'a') as f:
+            f.write(f"{text}\n")
+        return True
+        
         
     def read_file(self, with_index):
-        try:
-            if not self.check_note():
-                return False
-            with open(self.full_path, "r") as f:
-                for index, line in enumerate(f, 1):
-                    if with_index:
-                        print(f'{index}. {line.strip('\n')}')
-                    else:
-                        print(line.strip('\n'))
-            return True
-        except Exception as e:
-            rich.print(f"[bold red] (!) General, error is attacking us from read_file: {e} [bold red]")
-            return False
+        self.check_note(    )
+        with open(self.full_path, "r") as f:
+            for index, line in enumerate(f, 1):
+                if with_index:
+                    print(f'{index}. {line.rstrip('\n')}')
+                else:
+                    print(line.strip('\n'))
+        return True
+       
         
     def delete_entry(self, index):
         try:
-            if not self.check_note():
-                return False
+            self.check_note()
             if index < 1:
                 raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
             fd, temp_path = tempfile.mkstemp(dir=self.base_dir, text=True) 
@@ -101,16 +91,16 @@ class Note:
                         tmp_file.write(line)
             os.replace(temp_path, self.full_path)
             return True
+        except IndexOutOfBounds as e:
+            raise e
         except Exception as e:
-            rich.print(f'[bold red] (!) There is an error in delete_entry bro: {e}')
             if 'temp_path' in locals() and os.path.exists(temp_path):
                 os.remove(temp_path)
-            return False
+            raise e
         
     def append_entry(self, text, index):
         try:
-            if not self.check_note():
-                return False
+            self.check_note()
             if index < 1:
                 raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
             fd, temp_path = tempfile.mkstemp(dir=self.base_dir, text=True)  
@@ -124,17 +114,17 @@ class Note:
                         tmp_file.write(line)
             os.replace(temp_path, self.full_path)
             return True
+        except IndexOutOfBounds as e:
+            raise e
         except Exception as e:
-            rich.print(f'[bold red] (!) Hey, there is another error in append_entry: {e}')
             if 'temp_path' in locals() and os.path.exists(temp_path):
                 os.remove(temp_path)
-            return False
+            raise e
         
 
     def insert_entry(self, text, index):
         try:
-            if not self.check_note():
-                return False
+            self.check_note()
             if index < 1:
                 raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
             fd, temp_path = tempfile.mkstemp(dir=self.base_dir, text=True)  
@@ -151,11 +141,12 @@ class Note:
                     tmp_file.write(formatted_text)
             os.replace(temp_path, self.full_path)
             return True
+        except IndexOutOfBounds as e:
+            raise e
         except Exception as e:
-            rich.print(f'[bold red] (!) Hey, there is another error in append_entry: {e}')
             if 'temp_path' in locals() and os.path.exists(temp_path):
                 os.remove(temp_path)
-            return False
+            raise e
         
     def search_files(self):
         try:
@@ -163,26 +154,7 @@ class Note:
             for file_name in files:
                 print(str(file_name).split('/')[-1])
         except Exception as e:
-            rich.print(f'[bold red] (!) Sir there is an error in search_files: {e}')
-
-    def search_entry(self, text):
-        try:
-            with open(self.full_path, "r") as f:
-                f.read()
-        except Exception as e:
-            rich.print(f'[bold red] (!) Parlay has been given by error in search_entry: {e}')
-
-
-    def find_index(self, index):
-        if not self.check_note():
-                return False
-        with open(self.full_path, "r") as f:
-            try:
-                content = f.readlines() 
-                return content[index -1]
-            except Exception as e:
-                rich.print(f'Hey bro there is some error in {e}')
-                return False
+            raise e
             
     def erase_file(self): 
         try:
@@ -191,7 +163,7 @@ class Note:
                 return False
             self.full_path.unlink()
         except Exception as e:
-            rich.print(f'Dude, the error is attacking from erase_file: {e}')
+            raise e
         
 
 if __name__ == "__main__":
@@ -246,9 +218,14 @@ if __name__ == "__main__":
                 note.erase_file()
             else:
                 sys.exit(0)
+    except BasicFileCheck as e:
+        rich.print(f'[bold red] File error: {e} [bold red]')
+        sys.exit(0)
+    except SecurityAlert as e:
+        rich.print(f'[bold red] Security Alert: {e} [bold red]')
+        sys.exit(0)
+    except IndexOutOfBounds as e:
+        rich.print(f'[bold red] (!) Index error: {e} [bold red]')
     except Exception as e:
         rich.print(f'[bold red] There is a huge problem, error in init: {e} [bold red]')
-        sys.exit(0)
-    except BasicFileCheck as e:
-        rich.print(f'[bold red] User error: {e} [bold red]')
         sys.exit(0)

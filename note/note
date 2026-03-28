@@ -1,17 +1,21 @@
 #!/bin/python
 try:
-    import rich, os, tempfile, argparse, sys
+    import rich, os, tempfile, argparse, sys, logging, re
     from pathlib import Path
+    from rich.text import Text
 except ImportError as e:
     print(f"Import error: {e}")
 
 class IndexOutOfBounds(Exception):
+    """Handles out of bound error"""
     pass
 
 class BasicFileCheck(Exception):
+    """Handles file error like missing file"""
     pass
 
 class SecurityAlert(Exception):
+    """Handles all security threats"""
     pass
 
 class Note:
@@ -21,13 +25,24 @@ class Note:
         else:
             self.base_dir = Path("~/.config/note").expanduser().resolve()
             requested_path = (self.base_dir / file_name).resolve()
-            if not str(requested_path).startswith(str(self.base_dir)):
-                raise SecurityAlert("Path traversal has been detected. Common don't try to hack someone  ⎛⎝( ` ᢍ ´ )⎠⎞ᵐᵘʰᵃʰᵃ")
             self.full_path = requested_path
+            self._security_logging_system()
+            if not str(requested_path).startswith(str(self.base_dir)):
+                self.security_log.warning(f"CRITICAL : Path traversal was detected at {self.full_path}")
+                raise SecurityAlert("Path traversal has been detected. Common don't try to hack someone  ⎛⎝( ` ᢍ ´ )⎠⎞ᵐᵘʰᵃʰᵃ")
         self.MAX_LINE = 1000
         self.MAX_INPUT = 10 * 1024 * 1024
-        
-        
+
+    def _security_logging_system(self):
+        try:
+            self.security_log = logging.getLogger("security")
+            self.security_log.setLevel(logging.INFO)
+            sec_handler = logging.FileHandler(self.base_dir / ".security_audit.log")
+            sec_handler.setFormatter(logging.Formatter('%(asctime)s: %(message)s'))
+            self.security_log.addHandler(sec_handler)
+        except FileNotFoundError as e:
+            self.full_path.parent.mkdir(parents=True, exist_ok=True)
+            self._security_logging_system()
     def check_note(self):
         if not self.full_path.exists():
             try:
@@ -42,9 +57,9 @@ class Note:
         if not self.full_path.is_file():
             raise BasicFileCheck('File is not a file. Keep up the good work.')
         if self.full_path.is_symlink():
+            self.security_log.warning(f"CRITICAL : Symbolic link has been detected in {self.full_path}")
             raise SecurityAlert("Symbolic link has been detected. Aborting.")
         return True
-       
     
     def create_a_file(self):
         try:
@@ -58,6 +73,7 @@ class Note:
     def write_file(self, text):
         self.check_note()
         if len(text) > self.MAX_LINE:
+            self.security_log.warning(f"HIGH : Too high of input, Potential buffer/DDoS attack")
             raise SecurityAlert("Too high of input, Potential buffer/DDoS attack")
         if self.full_path.stat().st_size > self.MAX_INPUT:
             raise BasicFileCheck("File size limit reached.")
@@ -65,9 +81,8 @@ class Note:
             f.write(f"{text}\n")
         return True
         
-        
     def read_file(self, with_index):
-        self.check_note(    )
+        self.check_note()
         with open(self.full_path, "r") as f:
             for index, line in enumerate(f, 1):
                 if with_index:
@@ -75,7 +90,6 @@ class Note:
                 else:
                     print(line.strip('\n'))
         return True
-       
         
     def delete_entry(self, index):
         try:
@@ -121,7 +135,6 @@ class Note:
                 os.remove(temp_path)
             raise e
         
-
     def insert_entry(self, text, index):
         try:
             self.check_note()
@@ -148,27 +161,42 @@ class Note:
                 os.remove(temp_path)
             raise e
         
+    def search_entry(self, text):
+        try:
+            self.check_note()
+            found = False
+            with open(self.full_path, "r") as f:
+                for i, line in enumerate(f, 1):
+                    if re.search(text, line, re.IGNORECASE):
+                        found = True
+                        temp_line = Text(line)
+                        temp_line.highlight_regex(text, style="bold magenta underline")
+                        rich.print(f"[bold green] Line {i}:[/bold green]", end="")
+                        rich.print(temp_line, end="")
+            if not found:
+                rich.print(f"[bold red] (!) No matches found for: {text}")
+        except Exception as e:
+            rich.print(f'[bold red] (!) Parlay has been given by error in search_entry: {e}')
+        
     def search_files(self):
         try:
-            files = list(self.base_dir.glob("*"))
-            for file_name in files:
-                print(str(file_name).split('/')[-1])
+            files = [p.name for p in self.base_dir.glob("*") if p.is_file()]
+            files.sort()
+            for file in files:
+                print(file)
         except Exception as e:
             raise e
             
     def erase_file(self): 
         try:
             if not self.full_path.exists():
-                rich.print("[bold red] (!) If you want to delete a file then create one first ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧")
-                return False
+                raise BasicFileCheck("If you want to delete a file then create one first ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧")
             self.full_path.unlink()
         except Exception as e:
             raise e
         
-
 if __name__ == "__main__":
     try:
-       
         parser = argparse.ArgumentParser(description="This is an note taking application.")
         parser.add_argument("file", nargs="?", default="note.txt", help="Enter name of note here.")
         subparsers = parser.add_subparsers(dest="command")
@@ -190,6 +218,9 @@ if __name__ == "__main__":
         insert_parser = subparsers.add_parser("content", help="Write entry to be added to the note")
         insert_parser.add_argument("-i", "--index", help="Write index that needs to be added to")
 
+        search_parser = subparsers.add_parser("search", help="Searches for some patterns")
+        search_parser.add_argument("content", help="Write what should be searched for")
+
         list_parser = subparsers.add_parser("ls", help="lists all the files that has been created")
         erase_parser = subparsers.add_parser("destroy", help="Removes the file completely")
 
@@ -206,10 +237,10 @@ if __name__ == "__main__":
             rich.print(f"[bold red] (*) Deleting the content: {args.content} (*) [bold red]")
             note.delete_entry(int(args.content))
         elif args.command == "append":
-            rich.print(f"[bold green] (*) Appending the content: {args.content} in index {args.index} (*) [bold green]")
+            rich.print(f"[bold purple] (*) Appending the content: {args.content} in index {args.index} (*) [bold purple]")
             note.append_entry(args.content, int(args.index))
         elif args.command == "ls":
-            rich.print(f"[bold yellow] (*) Listing all the files (*) [bold yellow]")
+            rich.print(f"[bold cyan] (*) Listing all the files (*) [bold cyan]")
             note.search_files()
         elif args.command == "destroy":
             rich.print(f"[bold red] (!) Are you sure you want to remove this file, [bold red]", end="")
@@ -218,14 +249,26 @@ if __name__ == "__main__":
                 note.erase_file()
             else:
                 sys.exit(0)
+        elif args.command == "search":
+            rich.print(f"[bold magenta] (*) Searching for pattern now {args.content} (*) [bold magenta]")
+            note.search_entry(args.content)
+        logging.basicConfig(
+            filename=Path("~/.config/note/.error_audit.log").expanduser(),
+            level=logging.ERROR,
+            format='%(asctime)s: %(message)s'
+        )
     except BasicFileCheck as e:
+        logging.error(f'File error: {e}')
         rich.print(f'[bold red] File error: {e} [bold red]')
         sys.exit(0)
     except SecurityAlert as e:
         rich.print(f'[bold red] Security Alert: {e} [bold red]')
         sys.exit(0)
     except IndexOutOfBounds as e:
+        logging.error(f'Index error: {e}')
         rich.print(f'[bold red] (!) Index error: {e} [bold red]')
+        sys.exit(0)
     except Exception as e:
+        logging.error(f'Unexpected error: {e}')
         rich.print(f'[bold red] There is a huge problem, error in init: {e} [bold red]')
         sys.exit(0)

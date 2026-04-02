@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tui "healthcheck/internal/pkg"
@@ -156,37 +157,79 @@ func checkFrequency() (CPUFrequency, error) {
 
 func CPUHealth() {
 	style := tui.DefaultStyles()
-	coreUsage, err := getPerCoreStats()
-	if err != nil {
-		log.Fatalf(style.Error.Render("Error in getting core usage: %s"), err)
-	}
-	coreTemp, err := getThermal()
-	if err != nil {
-		log.Fatalf(style.Error.Render("Error in getting core temperature: %s"), err)
-	}
-	coreFrequency, err := checkFrequency()
-	if err != nil {
-		log.Fatalf(style.Error.Render("Error in getting core frequency: %s"), err)
-	}
+	usageChan := make(chan CoreStats, 1)
+	thermalChan := make(chan CPUTemp, 1)
+	hzChan := make(chan CPUFrequency, 1)
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		res, err := getPerCoreStats()
+		if err != nil {
+			log.Fatalf(style.Error.Render("Error in getting core usage: %s"), err)
+			return
+		}
+		usageChan <- res
+	}()
+
+	go func() {
+		defer wg.Done()
+		res, err := getThermal()
+		if err != nil {
+			log.Fatalf(style.Error.Render("Error in getting core temperature: %s"), err)
+			return
+		}
+		thermalChan <- res
+	}()
+
+	go func() {
+		defer wg.Done(	)
+		res, err := checkFrequency()
+		if err != nil {
+			log.Fatalf(style.Error.Render("Error in getting core frequency: %s"), err)
+			return
+		}
+		hzChan <- res
+	}()
+
+	coreUsage := <-usageChan
+	coreTemp := <-thermalChan
+	coreFrequency := <- hzChan
+	close(usageChan)
+	close(thermalChan)
+	close(hzChan)
+
 	fmt.Println(style.Title.Render("-------- CPU Health Check Result --------"))
-	fmt.Println(style.Info.Render(coreFrequency.ModelName))
+	fmt.Println(style.Info.Render("CPU:", coreFrequency.ModelName))
 	fmt.Println(style.Normal.Render("Average CPU Core Usage: "), coreUsage.AverageUsage)
 	fmt.Println(style.Normal.Render("Average CPU Core Temperature: "), coreTemp.AverageTemp)
-	fmt.Println(style.Normal.Render("Average CPU core Frequency: "), coreFrequency.Average)
+	fmt.Println(style.Normal.Render("Average CPU core Frequency: "), coreFrequency.Average) 
 
 	if coreUsage.AverageUsage >  PerCoreUsageWarn || coreTemp.AverageTemp > TempWarn{
 		fmt.Println(style.Critical.Render("(*) Emergency Alert: Please wait, Calling higher auditing power function."))
 		CPUSecurity()
+	}else {
+		fmt.Println(style.Info.Render("(+) Everything seems normal. Thank you for using my application ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧"))
 	}
-	fmt.Println(style.Info.Render("(+) Everything seems normal. Thank you for using my application ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧"))
 }
 
 func CPUSecurity() {
 	style := tui.DefaultStyles()
-	coreUsage, err := getPerCoreStats()
-	if err != nil {
-		log.Fatalf(style.Error.Render("Error in getting core usage: %s"), err)
-	}
+	usageChan := make(chan CoreStats, 1)
+	thermalChan := make(chan CPUTemp, 1)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		res, err := getPerCoreStats()
+		if err != nil {
+			log.Fatalf(style.Error.Render("Error in getting core usage: %s"), err)
+			return
+		}
+		usageChan <- res
+	}()
+	coreUsage := <- usageChan
 	if len(coreUsage.CriticalCore) > 0  {
 		fmt.Println(style.Critical.Render("(*) Crtical core given below, mend them with haste."))
 		for _, coreId := range coreUsage.CriticalCore {
@@ -197,12 +240,18 @@ func CPUSecurity() {
 		fmt.Println(style.Warning.Render("(+) Warning core given below, investigate the cause quickly"))
 		for _, coreId := range coreUsage.WarningCore{
 			fmt.Printf("Core %d, Usage %.2f\n", coreId, coreUsage.PerCoreUsage[coreId])
+		}	
+	}
+	go func() {
+		defer wg.Done()
+		res, err := getThermal()
+		if err != nil {
+			log.Fatalf(style.Error.Render("Error in getting core temperature: %s"), err)
+			return
 		}
-	}
-	coreTemp, err := getThermal()
-	if err != nil {
-		log.Fatalf(style.Critical.Render("Error in getting core temperature: %s"), err)
-	}
+		thermalChan <- res
+	}()
+	coreTemp := <-thermalChan
 	if len(coreTemp.CriticalCore) > 0  {
 		fmt.Println(style.Critical.Render("Critical core given below, mend them with haste."))
 		for _, coreId := range coreTemp.CriticalCore {

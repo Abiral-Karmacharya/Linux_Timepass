@@ -1,7 +1,7 @@
 package main
 
 import (
-	"healthcheck/cpu"
+	"healthcheck/internal/cpu"
 )
 
 func main() {

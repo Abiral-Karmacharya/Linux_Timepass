@@ -57,7 +57,7 @@ class Note:
         if not self.full_path.is_file():
             raise BasicFileCheck('File is not a file. Keep up the good work.')
         if self.full_path.is_symlink():
-            self.security_log.warning(f"CRITICAL : Symbolic link has been detected in {self.full_path}")
+            self.security_log.warning(f"HIGH : Symbolic link has been detected in {self.full_path}")
             raise SecurityAlert("Symbolic link has been detected. Aborting.")
         return True
     
@@ -73,7 +73,7 @@ class Note:
     def write_file(self, text):
         self.check_note()
         if len(text) > self.MAX_LINE:
-            self.security_log.warning(f"HIGH : Too high of input, Potential buffer/DDoS attack")
+            self.security_log.warning(f"MEDIUM : Too high of input, Potential buffer/DDoS attack")
             raise SecurityAlert("Too high of input, Potential buffer/DDoS attack")
         if self.full_path.stat().st_size > self.MAX_INPUT:
             raise BasicFileCheck("File size limit reached.")
@@ -84,6 +84,7 @@ class Note:
     def read_file(self, with_index):
         self.check_note()
         with open(self.full_path, "r") as f:
+            f.read()
             for index, line in enumerate(f, 1):
                 if with_index:
                     print(f'{index}. {line.rstrip('\n')}')
@@ -232,13 +233,13 @@ if __name__ == "__main__":
             note.read_file(args.index)
         elif args.command == "write":
             rich.print(f'[bold blue] (*) Writing the content: {args.content} (*) [bold blue]')
-            note.write_file(args.content)
+            note.write_file(args.content.encode('utf-8').decode('unicode_escape'))
         elif args.command == "delete":
             rich.print(f"[bold red] (*) Deleting the content: {args.content} (*) [bold red]")
             note.delete_entry(int(args.content))
         elif args.command == "append":
             rich.print(f"[bold purple] (*) Appending the content: {args.content} in index {args.index} (*) [bold purple]")
-            note.append_entry(args.content, int(args.index))
+            note.append_entry(args.content.encode('utf-8').decode('unicode_escape'), int(args.index))
         elif args.command == "ls":
             rich.print(f"[bold cyan] (*) Listing all the files (*) [bold cyan]")
             note.search_files()

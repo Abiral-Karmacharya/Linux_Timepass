@@ -1,8 +1,9 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+)
 
-// Styles is a struct to hold our "CSS" rules
 type UIStyles struct {
     Title    lipgloss.Style
     Critical  lipgloss.Style
@@ -12,7 +13,6 @@ type UIStyles struct {
     Error lipgloss.Style
 }
 
-// DefaultStyles acts like your "External Stylesheet"
 func DefaultStyles() UIStyles {
     return UIStyles{
         Title: lipgloss.NewStyle().

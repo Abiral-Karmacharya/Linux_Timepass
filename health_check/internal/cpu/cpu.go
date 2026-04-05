@@ -52,7 +52,9 @@ const (
 	PerCoreUsageCritical = 100.00
 	TempWarn = 85.00
 	TempCritical = 95.00
+	
 )
+var style = tui.DefaultStyles()
 
 func getPerCoreStats() (CoreStats, error) {
 	var (
@@ -126,10 +128,13 @@ func checkFrequency() (CPUFrequency, error) {
 	if err != nil {
 		return CPUFrequency{}, fmt.Errorf("Error while calculating frequency: %w", err)
 	}
-	var total float64
-	bufferCore := make([]int32, len(info))
-	bufferLiveSpeeds := make([]float64, len(info))
-	bufferLimit := make([]float64, len(info))
+	var (
+		total float64
+		average float64
+		bufferCore = make([]int32, len(info))
+		bufferLiveSpeeds = make([]float64, len(info))
+		bufferLimit = make([]float64, len(info))
+	)
 	for i, value := range info {
         data, err:= os.ReadFile(fmt.Sprintf("/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq", i))
 		if err != nil {
@@ -144,7 +149,7 @@ func checkFrequency() (CPUFrequency, error) {
 		bufferLimit[i] = value.Mhz
 		total += val / 1000.0
     }
-	average := total / float64(len(bufferLiveSpeeds))
+	average = total / float64(len(bufferLiveSpeeds))
 	liveSpeeds := CPUFrequency{
 		LiveSpeeds: bufferLiveSpeeds,
 		Average: average,
@@ -156,18 +161,19 @@ func checkFrequency() (CPUFrequency, error) {
 }
 
 func CPUHealth() {
-	style := tui.DefaultStyles()
-	usageChan := make(chan CoreStats, 1)
-	thermalChan := make(chan CPUTemp, 1)
-	hzChan := make(chan CPUFrequency, 1)
-	var wg sync.WaitGroup
+	var (
+		usageChan = make(chan CoreStats, 1)
+		thermalChan = make(chan CPUTemp, 1)
+		hzChan = make(chan CPUFrequency, 1)
+		wg sync.WaitGroup
+	)
 	wg.Add(3)
 
 	go func() {
 		defer wg.Done()
 		res, err := getPerCoreStats()
 		if err != nil {
-			log.Fatalf(style.Error.Render("Error in getting core usage: %s"), err)
+			log.Fatalf(style.Error.Render("%s"), err)
 			return
 		}
 		usageChan <- res
@@ -177,7 +183,7 @@ func CPUHealth() {
 		defer wg.Done()
 		res, err := getThermal()
 		if err != nil {
-			log.Fatalf(style.Error.Render("Error in getting core temperature: %s"), err)
+			log.Fatalf(style.Error.Render("%s"), err)
 			return
 		}
 		thermalChan <- res
@@ -187,21 +193,19 @@ func CPUHealth() {
 		defer wg.Done(	)
 		res, err := checkFrequency()
 		if err != nil {
-			log.Fatalf(style.Error.Render("Error in getting core frequency: %s"), err)
+			log.Fatalf(style.Error.Render("%s"), err)
 			return
 		}
 		hzChan <- res
 	}()
-
 	coreUsage := <-usageChan
 	coreTemp := <-thermalChan
 	coreFrequency := <- hzChan
 	close(usageChan)
 	close(thermalChan)
 	close(hzChan)
-
 	fmt.Println(style.Title.Render("-------- CPU Health Check Result --------"))
-	fmt.Println(style.Info.Render("CPU:", coreFrequency.ModelName))
+	fmt.Println(style.Title.Render("CPU:", coreFrequency.ModelName))
 	fmt.Println(style.Normal.Render("Average CPU Core Usage: "), coreUsage.AverageUsage)
 	fmt.Println(style.Normal.Render("Average CPU Core Temperature: "), coreTemp.AverageTemp)
 	fmt.Println(style.Normal.Render("Average CPU core Frequency: "), coreFrequency.Average) 
@@ -209,22 +213,23 @@ func CPUHealth() {
 	if coreUsage.AverageUsage >  PerCoreUsageWarn || coreTemp.AverageTemp > TempWarn{
 		fmt.Println(style.Critical.Render("(*) Emergency Alert: Please wait, Calling higher auditing power function."))
 		CPUSecurity()
-	}else {
-		fmt.Println(style.Info.Render("(+) Everything seems normal. Thank you for using my application ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧"))
+	} else {
+		fmt.Println(style.Info.Render("Your CPU is okay ₍^. .^₎⟆"))
 	}
 }
 
 func CPUSecurity() {
-	style := tui.DefaultStyles()
-	usageChan := make(chan CoreStats, 1)
-	thermalChan := make(chan CPUTemp, 1)
-	var wg sync.WaitGroup
+	var(
+		usageChan = make(chan CoreStats, 1)
+		thermalChan = make(chan CPUTemp, 1)
+		wg sync.WaitGroup
+	)
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		res, err := getPerCoreStats()
 		if err != nil {
-			log.Fatalf(style.Error.Render("Error in getting core usage: %s"), err)
+			log.Fatalf(style.Error.Render("%s"), err)
 			return
 		}
 		usageChan <- res
@@ -246,12 +251,14 @@ func CPUSecurity() {
 		defer wg.Done()
 		res, err := getThermal()
 		if err != nil {
-			log.Fatalf(style.Error.Render("Error in getting core temperature: %s"), err)
+			log.Fatalf(style.Error.Render("%s"), err)
 			return
 		}
 		thermalChan <- res
 	}()
 	coreTemp := <-thermalChan
+	close(usageChan)
+	close(thermalChan)
 	if len(coreTemp.CriticalCore) > 0  {
 		fmt.Println(style.Critical.Render("Critical core given below, mend them with haste."))
 		for _, coreId := range coreTemp.CriticalCore {

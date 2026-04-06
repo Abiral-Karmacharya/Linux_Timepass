@@ -20,6 +20,7 @@ type BasicMemory struct {
 	Available uint64
 	UsedPercent float64
 	SwapTotal uint64
+	Status int
 }
 
 type ECCStatus struct {
@@ -28,17 +29,37 @@ type ECCStatus struct {
 }
 
 var style = tui.DefaultStyles()
+const (
+	warnMem = 70
+	criticalMem = 90
+	StatusOK = 0
+	StatusWarning = 1
+	StatusCritical = 2
+)
 
 func GetMemory() (BasicMemory, error) {
+	var (
+		status int
+		bufferUsage float64
+	)
 	memory, err := mem.VirtualMemory()
 	if err != nil {
 		return BasicMemory{}, fmt.Errorf("Error while retrieving basic info: %w", err)
+	}
+	status = StatusOK
+	bufferUsage = memory.UsedPercent
+	if bufferUsage > warnMem {
+		status = StatusWarning
+	}else if bufferUsage > criticalMem{
+		status = StatusCritical
 	}
 	report := BasicMemory{
 		Total: memory.Total,
 		Available: memory.Available,
 		UsedPercent: memory.UsedPercent,
 		SwapTotal: memory.SwapTotal,
+		Status: status,
+
 	}
 	return report, nil
 }
@@ -50,15 +71,13 @@ func GetECC() ECCStatus {
 	}
 	val, _ := strconv.Atoi(strings.TrimSpace(string(data)))
 	return ECCStatus{Present:true, Errors:val}
-
 }
 
-func Memory() {
+func MemoryHealth() {
 	var (
 		wg sync.WaitGroup
 		basicChan = make(chan BasicMemory, 1)
 		eccChan = make(chan ECCStatus, 1)
-
 	)
 	wg.Add(2)
 	go func() {
@@ -94,5 +113,9 @@ func Memory() {
 			fmt.Println(style.Normal.Render("(+) No error in your ECC too"))
 		}
 	}
-	fmt.Println(style.Info.Render("Your Memory is okay ₍^. .^₎⟆"))
+	if basicMemory.Status == StatusCritical {
+		fmt.Println(style.Critical.Render("(*) Emergency Alert: Please wait, Calling higher auditing power function."))
+	}else {
+		fmt.Println(style.Info.Render("Your Memory is okay ₍^. .^₎⟆"))
+	}
 }

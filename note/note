@@ -1,6 +1,6 @@
 #!/bin/python
 try:
-    import rich, os, tempfile, argparse, sys, logging, re
+    import rich, os, tempfile, argparse, sys, logging, re, pyperclip
     from pathlib import Path
     from rich.text import Text
 except ImportError as e:
@@ -84,7 +84,6 @@ class Note:
     def read_file(self, with_index):
         self.check_note()
         with open(self.full_path, "r") as f:
-            f.read()
             for index, line in enumerate(f, 1):
                 if with_index:
                     print(f'{index}. {line.rstrip('\n')}')
@@ -95,8 +94,17 @@ class Note:
     def delete_entry(self, index):
         try:
             self.check_note()
-            if index < 1:
-                raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")
+            if index < 0:
+                raise IndexOutOfBounds(f"Index {index} is out of bounds. Please enter above 0")            
+            if index == 0:
+                rich.print("[bold red] Do you want to remove all the content of file, ", end='')
+                choice = input("y or n: ")
+                if choice == "n":
+                    return False
+                with open(self.full_path, 'w'):
+                    pass
+                rich.print("[bold green] (+) All contents removed from the file")
+                return True            
             fd, temp_path = tempfile.mkstemp(dir=self.base_dir, text=True) 
             with os.fdopen(fd, 'w') as tmp_file:
                 with open(self.full_path, "r") as f:
@@ -176,8 +184,29 @@ class Note:
                         rich.print(temp_line, end="")
             if not found:
                 rich.print(f"[bold red] (!) No matches found for: {text}")
+                return False
         except Exception as e:
-            rich.print(f'[bold red] (!) Parlay has been given by error in search_entry: {e}')
+            # rich.print(f'[bold red] (!) Parlay has been given by error in search_entry: {e}')
+            raise e
+        
+    def copy_lines(self, with_index):
+        try:
+            lines = []
+            self.check_note()
+            with open(self.full_path, "r") as f:
+                for index, line in enumerate(f, 1):
+                    if with_index:
+                        start_line, end_line = with_index.split("-")
+                        if index >= int(end_line):
+                            break
+                        if index >= int(start_line):
+                            lines.append(line)
+                    else:
+                        lines.append(line)
+            pyperclip.copy("".join(lines))
+        except Exception as e:
+            raise e
+        
         
     def search_files(self):
         try:
@@ -210,6 +239,7 @@ if __name__ == "__main__":
 
         delete_parser = subparsers.add_parser("delete", help="Deletes a entry in the list")
         delete_parser.add_argument("content", help="Write the index of the list you want to delete")
+        delete_parser.add_argument("-a", "--all", action="store_true", help="Removes all the content in the file")
 
         append_parser = subparsers.add_parser("append", help="Changes the required entry")
         append_parser.add_argument("content", help="Write the content that will be kept in the entry instead")
@@ -217,7 +247,6 @@ if __name__ == "__main__":
 
         insert_parser = subparsers.add_parser("insert", help="Inserts entry in the note which out removing anything else")
         insert_parser = subparsers.add_parser("content", help="Write entry to be added to the note")
-        insert_parser.add_argument("-i", "--index", help="Write index that needs to be added to")
 
         search_parser = subparsers.add_parser("search", help="Searches for some patterns")
         search_parser.add_argument("content", help="Write what should be searched for")
@@ -225,6 +254,8 @@ if __name__ == "__main__":
         list_parser = subparsers.add_parser("ls", help="lists all the files that has been created")
         erase_parser = subparsers.add_parser("destroy", help="Removes the file completely")
 
+        copy_parser = subparsers.add_parser("copy", help="Copies the content of file")
+        copy_parser.add_argument("-i", "--index", help="Copies the indexed content of file")
         args = parser.parse_args()  
         note = Note(args.file or None)
 
@@ -253,6 +284,9 @@ if __name__ == "__main__":
         elif args.command == "search":
             rich.print(f"[bold magenta] (*) Searching for pattern now {args.content} (*) [bold magenta]")
             note.search_entry(args.content)
+        elif args.command == "copy":
+            rich.print(f"[bold green] (*) Copying from the file (*) [bold green]")
+            note.copy_lines(args.index or None)
         logging.basicConfig(
             filename=Path("~/.config/note/.error_audit.log").expanduser(),
             level=logging.ERROR,
